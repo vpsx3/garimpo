@@ -1,8 +1,6 @@
-import { limitedFetch } from "@/lib/providers/http";
 import {
   ListingUnavailableError,
   ProviderStaleError,
-  ProviderTransientError,
   rawListingDetailSchema,
   rawListingSchema,
   rawPriceQuoteSchema,
@@ -15,91 +13,70 @@ import {
   type SearchProvider,
   type SearchQuery,
 } from "@/lib/providers/types";
-import {
-  normalizeListing,
-  normalizeListingDetail,
-  normalizePriceQuote,
-  normalizeReview,
-} from "@/lib/providers/apify/normalize";
-import { nightsBetween } from "@/lib/providers/apify";
-import { getBootstrap, invalidateBootstrap } from "./bootstrap";
-import { collectListingNodes, collectReviewNodes, extractPriceBreakdown } from "./shape";
+import { normalizeListingDetail, normalizeReview } from "@/lib/providers/apify/normalize";
+import { collectReviewNodes, extractPriceBreakdown } from "./shape";
+import { fetchDeferredState, locationSlug, pageCursor } from "./page";
+import { collectSearchResults, normalizeSearchResult } from "./search";
+import { asNumber } from "@/lib/providers/extract";
 
 const ORIGIN = "https://www.airbnb.com.br";
-const LIMITER = "direct";
+const PAGE_SIZE = 18;
 
 /**
- * Adapter que fala direto com o GraphQL interno da origem.
+ * Adapter que lê as próprias páginas do Airbnb.
  *
- * Gratuito e rápido, e vai quebrar periodicamente — isso é esperado, não é
- * bug (§13). Quando quebra, lança `ProviderStaleError` e quem chama cai para
- * a Apify.
+ * A primeira versão falava com o GraphQL interno e quebrou no primeiro contato
+ * real: a API só aceita operações persistidas, cuja `sha256Hash` não aparece
+ * no HTML da home e rotaciona a cada deploy deles. Sem hash, 400.
  *
- * O payload do GraphQL é uma árvore profunda e instável. Em vez de navegar por
- * caminhos fixos, varremos a árvore atrás de nós que *parecem* anúncios
- * (`shape.ts`) e normalizamos com os mesmos extratores defensivos do outro
- * adapter.
+ * Esta versão pede a mesma página que o navegador pede e lê o JSON que ela já
+ * carrega em `data-deferred-state-0` — a resposta do GraphQL, inteira. Some a
+ * chave de API, some o hash, some a persisted query: três pontos de quebra a
+ * menos, e de brinde o preço já vem decomposto com impostos e total.
  */
 export class DirectProvider implements SearchProvider {
   readonly name = "direct";
 
   async searchStays(q: SearchQuery): Promise<RawListing[]> {
-    const variables = {
-      request: {
-        metadataOnly: false,
-        version: "1.8.3",
-        itemsPerGrid: Math.min(q.limit ?? 300, 50),
-        placeId: null,
-        query: q.locationQuery,
-        checkin: q.checkIn,
-        checkout: q.checkOut,
-        adults: q.adults ?? q.guests,
-        children: q.children ?? 0,
-        infants: q.infants ?? 0,
-        pets: q.pets ?? 0,
-        priceMax: q.maxGrossNightly ?? null,
-        currency: q.currency ?? "BRL",
-        source: "structured_search_input_header",
-        searchType: "filter_change",
-      },
-    };
-
-    const payload = await this.call("StaysSearch", variables);
+    const alvo = Math.min(q.limit ?? 200, 300);
     const listings: RawListing[] = [];
-    const seen = new Set<string>();
+    const vistos = new Set<string>();
 
-    for (const node of collectListingNodes(payload)) {
-      const normalized = normalizeListing(node);
-      if (!normalized || seen.has(normalized.externalId)) continue;
-      const parsed = rawListingSchema.safeParse(normalized);
-      if (!parsed.success) continue;
-      seen.add(parsed.data.externalId);
-      listings.push(parsed.data);
+    for (let offset = 0; offset < alvo; offset += PAGE_SIZE) {
+      const state = await fetchDeferredState(this.searchUrl(q, offset));
+      const results = collectSearchResults(state);
+
+      if (results.length === 0) {
+        if (offset === 0) {
+          throw new ProviderStaleError(
+            "A página de busca não trouxe nenhum resultado reconhecível; " +
+              "a forma do payload mudou.",
+          );
+        }
+        break; // acabaram as páginas
+      }
+
+      for (const result of results) {
+        const normalized = normalizeSearchResult(result);
+        if (!normalized || vistos.has(normalized.externalId)) continue;
+        const parsed = rawListingSchema.safeParse(normalized);
+        if (!parsed.success) continue;
+        vistos.add(parsed.data.externalId);
+        listings.push(parsed.data);
+      }
+
+      if (results.length < PAGE_SIZE) break;
     }
 
-    if (listings.length === 0) {
-      // Resposta 200 sem nenhum anúncio reconhecível significa que a forma do
-      // payload mudou — exatamente o caso de obsolescência.
-      throw new ProviderStaleError(
-        "StaysSearch respondeu sem nenhum anúncio reconhecível; a forma do payload mudou.",
-      );
-    }
-
-    return listings;
+    return listings.slice(0, alvo);
   }
 
   async getListingDetail(listingId: string): Promise<RawListingDetail> {
-    const payload = await this.call("StaysPdpSections", {
-      id: encodeListingId(listingId),
-      pdpSectionsRequest: {
-        adults: "1",
-        layouts: ["SIDEBAR", "SINGLE_COLUMN"],
-        pdpTypeOverride: null,
-      },
+    const state = await fetchDeferredState(this.roomUrl(listingId));
+    const detail = normalizeListingDetail({
+      id: listingId,
+      ...flattenPdp(state),
     });
-
-    const node = collectListingNodes(payload)[0] ?? payload;
-    const detail = normalizeListingDetail({ id: listingId, ...asRecord(node) });
     if (!detail) throw new ListingUnavailableError(listingId);
     return rawListingDetailSchema.parse(detail);
   }
@@ -109,34 +86,29 @@ export class DirectProvider implements SearchProvider {
     q: DateRange & { guests: number },
   ): Promise<RawPriceQuote> {
     const nights = nightsBetween(q.checkIn, q.checkOut);
-    const payload = await this.call("StaysPdpSections", {
-      id: encodeListingId(listingId),
-      pdpSectionsRequest: {
-        adults: String(q.guests),
-        checkIn: q.checkIn,
-        checkOut: q.checkOut,
-        layouts: ["SIDEBAR", "SINGLE_COLUMN"],
-      },
-    });
+    const state = await fetchDeferredState(this.roomUrl(listingId, q));
+    const breakdown = extractPriceBreakdown(state);
 
-    const breakdown = extractPriceBreakdown(payload);
-    return rawPriceQuoteSchema.parse(
-      normalizePriceQuote(breakdown, listingId, nights),
-    );
+    return rawPriceQuoteSchema.parse({
+      externalId: listingId,
+      nights,
+      grossNightly: asNumber(breakdown.nightlyRate),
+      cleaningFee: asNumber(breakdown.cleaningFee),
+      serviceFee: asNumber(breakdown.serviceFee),
+      taxes: asNumber(breakdown.taxes),
+      discountTotal: asNumber(breakdown.discount),
+      totalPrice: asNumber(breakdown.totalPrice),
+      currency: typeof breakdown.currency === "string" ? breakdown.currency : "BRL",
+      isAvailable: true,
+      raw: breakdown,
+    });
   }
 
   async getReviews(listingId: string, limit: number): Promise<RawReview[]> {
-    const payload = await this.call("StaysPdpReviewsQuery", {
-      request: {
-        fieldSelector: "for_p3_translation_only",
-        limit,
-        listingId: encodeListingId(listingId),
-        offset: "0",
-      },
-    });
-
+    const state = await fetchDeferredState(this.roomUrl(listingId));
     const reviews: RawReview[] = [];
-    for (const node of collectReviewNodes(payload).slice(0, limit)) {
+
+    for (const node of collectReviewNodes(state).slice(0, limit)) {
       const normalized = normalizeReview(node);
       if (!normalized) continue;
       const parsed = rawReviewSchema.safeParse(normalized);
@@ -145,89 +117,79 @@ export class DirectProvider implements SearchProvider {
     return reviews;
   }
 
-  /**
-   * Uma chamada ao GraphQL. Tenta a persisted query quando o hash foi
-   * extraído; sem hash, envia como query nomeada e deixa a origem decidir.
-   * Um 400/403/404 aqui quase sempre significa hash rotacionado: refazemos o
-   * bootstrap uma vez e, se insistir, declaramos obsolescência.
-   */
-  private async call(
-    operationName: string,
-    variables: Record<string, unknown>,
-    retried = false,
-  ): Promise<unknown> {
-    const bootstrap = await getBootstrap();
-    const hash = bootstrap.operationHashes[operationName];
+  private searchUrl(q: SearchQuery, offset: number): string {
+    const url = new URL(`${ORIGIN}/s/${locationSlug(q.locationQuery)}/homes`);
+    url.searchParams.set("checkin", q.checkIn);
+    url.searchParams.set("checkout", q.checkOut);
+    url.searchParams.set("adults", String(q.adults ?? q.guests));
+    if (q.children) url.searchParams.set("children", String(q.children));
+    if (q.infants) url.searchParams.set("infants", String(q.infants));
+    if (q.pets) url.searchParams.set("pets", String(q.pets));
+    if (q.maxGrossNightly) {
+      url.searchParams.set("price_max", String(Math.round(q.maxGrossNightly)));
+    }
+    // A origem mostra o preço já com taxas quando pedimos explicitamente —
+    // é o que torna a diária efetiva disponível já na busca.
+    url.searchParams.set("price_filter_input_type", "2");
+    url.searchParams.set("search_type", "filter_change");
+    if (offset > 0) url.searchParams.set("cursor", pageCursor(offset));
+    return url.toString();
+  }
 
-    const url = new URL(`${ORIGIN}/api/v3/${operationName}/${hash ?? ""}`);
-    url.searchParams.set("operationName", operationName);
-    url.searchParams.set("locale", "pt");
-    url.searchParams.set("currency", "BRL");
+  private roomUrl(listingId: string, range?: DateRange): string {
+    const url = new URL(`${ORIGIN}/rooms/${listingId}`);
+    if (range) {
+      url.searchParams.set("check_in", range.checkIn);
+      url.searchParams.set("check_out", range.checkOut);
+    }
+    return url.toString();
+  }
+}
 
-    const body = {
-      operationName,
-      variables,
-      extensions: hash
-        ? { persistedQuery: { version: 1, sha256Hash: hash } }
-        : undefined,
-    };
+/** Achata o estado da página de anúncio para os extratores defensivos. */
+function flattenPdp(state: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
 
-    const response = await limitedFetch(url.toString(), {
-      limiter: LIMITER,
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-airbnb-api-key": bootstrap.apiKey,
-        "x-airbnb-supports-airlock-v2": "true",
-        origin: ORIGIN,
-        referer: `${ORIGIN}/`,
-      },
-      body: JSON.stringify(body),
-      timeoutMs: 30_000,
-      attempts: 2,
-    });
+  const visit = (node: unknown, depth = 0) => {
+    if (depth > 12 || node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    const record = node as Record<string, unknown>;
 
-    if (response.status === 400 || response.status === 403 || response.status === 404) {
-      if (!retried) {
-        invalidateBootstrap();
-        await getBootstrap(true);
-        return this.call(operationName, variables, true);
+    // Guarda os campos de interesse na primeira vez que aparecem.
+    for (const key of [
+      "description",
+      "houseRules",
+      "amenities",
+      "personCapacity",
+      "bedrooms",
+      "bathrooms",
+      "beds",
+      "cancellationPolicy",
+      "coordinate",
+      "location",
+      "title",
+      "name",
+    ]) {
+      if (record[key] !== undefined && out[key] === undefined) {
+        out[key] = record[key];
       }
-      throw new ProviderStaleError(
-        `${operationName} respondeu ${response.status} mesmo após novo bootstrap; ` +
-          "chave ou sha256Hash rotacionaram.",
-      );
     }
 
-    if (!response.ok) {
-      throw new ProviderTransientError(
-        `${operationName} respondeu ${response.status}.`,
-        response.status,
-      );
-    }
+    for (const value of Object.values(record)) visit(value, depth + 1);
+  };
 
-    const payload = (await response.json()) as { errors?: unknown[] };
-    if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-      throw new ProviderStaleError(
-        `${operationName} devolveu erros de GraphQL: ${JSON.stringify(
-          payload.errors,
-        ).slice(0, 300)}`,
-      );
-    }
-    return payload;
-  }
+  visit(state);
+  return out;
 }
 
-/** A origem usa ids base64 no formato `StayListing:12345`. */
-export function encodeListingId(listingId: string): string {
-  if (/^[A-Za-z0-9+/=]{12,}$/.test(listingId) && !/^\d+$/.test(listingId)) {
-    return listingId; // já veio codificado
-  }
-  return Buffer.from(`StayListing:${listingId}`, "utf8").toString("base64");
+export function nightsBetween(checkIn: string, checkOut: string): number {
+  const start = Date.parse(`${checkIn}T00:00:00Z`);
+  const end = Date.parse(`${checkOut}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 1;
+  return Math.max(1, Math.round((end - start) / 86_400_000));
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : {};
-}
+export { encodeListingId } from "./shape-compat";

@@ -107,10 +107,11 @@ export function breakdownFromListing(
   listing: RawListing,
   options: { guests: number; nights: number; currency?: string },
 ): PriceBreakdown | null {
-  const nights = Math.max(1, options.nights);
+  const price = listing.price;
+  const nights = Math.max(1, price?.nights ?? options.nights);
   const guests = Math.max(1, options.guests);
-  const grossNightly = listing.price?.grossNightly ?? null;
-  const announcedTotal = listing.price?.totalPrice ?? null;
+  const grossNightly = price?.grossNightly ?? null;
+  const announcedTotal = price?.totalPrice ?? null;
 
   const totalPrice =
     announcedTotal && announcedTotal > 0
@@ -121,20 +122,28 @@ export function breakdownFromListing(
 
   if (totalPrice === null) return null;
 
+  /**
+   * Quando a origem exibe o preço no modo regulado, limpeza e serviço já
+   * estão amortizados na diária e o total é o que se paga. Aí o preço da
+   * busca não é estimativa: marcá-lo como tal mandaria o usuário gastar uma
+   * chamada por anúncio para reconfirmar o que já está confirmado.
+   */
+  const confirmado = price?.isRegulatedTotal === true;
+
   return {
     nights,
     guests,
     grossNightly,
-    cleaningFee: null,
+    cleaningFee: price?.cleaningFee ?? null,
     serviceFee: null,
-    taxes: null,
+    taxes: price?.taxes ?? null,
     discountTotal: null,
     totalPrice: round2(totalPrice),
     effectiveNightly: round2(totalPrice / nights),
     pricePerPerson: round2(totalPrice / guests),
-    currency: listing.price?.currency ?? options.currency ?? "BRL",
+    currency: price?.currency ?? options.currency ?? "BRL",
     isAvailable: true,
-    source: "search",
+    source: confirmado ? "quote" : "search",
   };
 }
 

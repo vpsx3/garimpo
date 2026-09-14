@@ -57,12 +57,21 @@ export const rawListingSchema = z
     instantBookable: z.boolean().nullish(),
     minNights: z.number().nullish(),
     maxNights: z.number().nullish(),
-    /** Preço tal como veio da listagem. Estimado, não confirmado. */
     price: z
       .object({
         grossNightly: z.number().nullish(),
         totalPrice: z.number().nullish(),
+        taxes: z.number().nullish(),
+        cleaningFee: z.number().nullish(),
+        nights: z.number().nullish(),
         currency: z.string().nullish(),
+        /**
+         * Verdadeiro quando a origem exibiu o preço no modo regulado
+         * ("Total:"), em que limpeza e serviço já estão amortizados na diária
+         * e o total é o que se paga. Nesse caso o preço da busca não é
+         * estimativa — dispensa a cotação por anúncio.
+         */
+        isRegulatedTotal: z.boolean().nullish(),
       })
       .loose()
       .nullish(),

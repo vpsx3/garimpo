@@ -33,7 +33,11 @@ export function PriceStep({
   const [pending, setPending] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
 
-  const pendentes = rows.filter((row) => row.priceSource === "search");
+  // Só entram no lote os que realmente precisam: preço ainda estimado, ou
+  // conteúdo ausente quando há filtro que depende dele.
+  const pendentes = rows.filter(
+    (row) => row.priceSource === "search" || (needsContent && !row.description),
+  );
   const alvo = pendentes.slice(0, BATCH);
 
   async function run() {
@@ -112,10 +116,12 @@ export function PriceStep({
       <Button size="sm" onClick={run} disabled={pending || alvo.length === 0}>
         <Coins className="h-3.5 w-3.5" />
         {pending
-          ? "Cotando…"
+          ? "Consultando…"
           : alvo.length === 0
-            ? "Todos cotados"
-            : `Calcular preço real (${alvo.length})`}
+            ? "Nada pendente"
+            : needsContent
+              ? `Carregar detalhes (${alvo.length})`
+              : `Calcular preço real (${alvo.length})`}
       </Button>
     </div>
   );

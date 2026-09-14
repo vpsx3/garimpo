@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { SearchQueryInput } from "@/lib/search/query";
+import { KeywordBox } from "./keyword-box";
 
 function isoDaysFromNow(days: number): string {
   const date = new Date();
@@ -16,9 +17,15 @@ function isoDaysFromNow(days: number): string {
 export function SearchForm({
   onSearch,
   pending,
+  keywords,
+  keywordsMode,
+  onKeywordsChange,
 }: {
   onSearch: (query: SearchQueryInput) => void;
   pending: boolean;
+  keywords: string[];
+  keywordsMode: "all" | "any";
+  onKeywordsChange: (keywords: string[], mode: "all" | "any") => void;
 }) {
   const [locationQuery, setLocationQuery] = useState("");
   const [checkIn, setCheckIn] = useState(isoDaysFromNow(30));
@@ -40,7 +47,8 @@ export function SearchForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2 border-b px-4 py-2.5">
+    <form onSubmit={submit} className="space-y-2.5 border-b px-4 py-2.5">
+      <div className="flex flex-wrap items-end gap-2">
       <Field label="Localização" className="min-w-52 flex-1">
         <Input
           required
@@ -88,6 +96,13 @@ export function SearchForm({
         <Search className="h-3.5 w-3.5" />
         {pending ? "Buscando…" : "Buscar"}
       </Button>
+      </div>
+
+      <KeywordBox
+        keywords={keywords}
+        mode={keywordsMode}
+        onChange={onKeywordsChange}
+      />
     </form>
   );
 }

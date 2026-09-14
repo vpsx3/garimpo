@@ -1,3 +1,4 @@
+import { AMENITY_LABELS, type AmenityKey } from "@/lib/amenities/canonical";
 import {
   CANCELLATION_RANK,
   type AmenityExpr,
@@ -37,6 +38,13 @@ export type Row = {
   isSuperhost: boolean | null;
   hostName: string | null;
   amenities: string[];
+  /**
+   * Rótulos de amenidade como a origem escreveu, antes da canonicalização.
+   * O vocabulário canônico cobre o que é filtrável por lógica booleana, mas
+   * descarta o resto — e é justamente no resto que moram "sauna", "quadra de
+   * tênis" e tudo que a busca por palavra-chave precisa encontrar.
+   */
+  amenityLabels: string[];
   instantBookable: boolean | null;
   minNights: number | null;
   maxNights: number | null;
@@ -144,6 +152,47 @@ function matchesAnyTerm(haystack: string | null, terms: string[]): boolean {
 
 function reviewsMatch(row: Row, terms: string[]): boolean {
   return row.reviews.some((review) => matchesAnyTerm(review.comment, terms));
+}
+
+/**
+ * Um anúncio "tem conteúdo" quando o passo 2 já trouxe descrição ou a lista de
+ * amenidades. Antes disso, só o título está disponível — e um anúncio com
+ * sauna cujo título não menciona sauna não pode ser reprovado por isso.
+ */
+export function hasContent(row: Row): boolean {
+  return (
+    row.description !== null ||
+    row.amenityLabels.length > 0 ||
+    row.houseRules !== null
+  );
+}
+
+/**
+ * Busca a palavra em tudo que descreve o anúncio: título, descrição, rótulos
+ * de amenidade como a origem escreveu, regras da casa e os rótulos em
+ * português das amenidades canônicas.
+ */
+export function matchesKeyword(row: Row, keyword: string): boolean {
+  const needle = normalizeText(keyword.trim());
+  if (!needle) return false;
+
+  const haystacks = [
+    row.title,
+    row.description,
+    row.houseRules,
+    row.propertyType,
+    ...row.amenityLabels,
+    ...row.amenities.map((key) => AMENITY_LABELS[key as AmenityKey] ?? key),
+  ];
+
+  return haystacks.some(
+    (value) => value !== null && value !== undefined && normalizeText(value).includes(needle),
+  );
+}
+
+/** Quais palavras-chave casaram, para a UI poder mostrar o porquê. */
+export function matchedKeywords(row: Row, keywords: string[]): string[] {
+  return keywords.filter((keyword) => matchesKeyword(row, keyword));
 }
 
 export function evaluateAmenityExpr(expr: AmenityExpr, amenities: string[]): boolean {
@@ -258,6 +307,27 @@ export function buildPredicates(filter: FilterDefinition): Predicate[] {
   if (filter.houseRulesExcludeTerms?.length) {
     const terms = filter.houseRulesExcludeTerms;
     add("houseRulesExcludeTerms", "Regras não contêm", (row) => !matchesAnyTerm(row.houseRules, terms));
+  }
+
+  // Busca livre por palavra-chave -----------------------------------------
+  if (filter.keywords?.length) {
+    const keywords = filter.keywords;
+    const mode = filter.keywordsMode ?? "all";
+    const label =
+      mode === "any" ? "Qualquer palavra-chave" : "Todas as palavras-chave";
+
+    add("keywords", label, (row) => {
+      const found = keywords.filter((keyword) => matchesKeyword(row, keyword));
+      if (mode === "any") {
+        // Sem nenhum acerto, o anúncio só sobrevive se ainda não dá para
+        // afirmar nada sobre ele.
+        return found.length > 0 || !hasContent(row);
+      }
+      if (found.length === keywords.length) return true;
+      // Em modo "todas", o que falta pode estar num conteúdo ainda não
+      // carregado — não dá para reprovar por ausência de dado.
+      return !hasContent(row);
+    });
   }
 
   // 7.4 Amenidades -------------------------------------------------------

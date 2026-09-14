@@ -11,6 +11,7 @@ import {
   formatPercent,
   formatRating,
 } from "@/lib/format";
+import { hasContent, matchedKeywords } from "@/lib/filters/apply";
 import type { Row } from "./types";
 import { ScoreCell } from "@/components/scoring/score-cell";
 
@@ -67,6 +68,7 @@ export function ResultsTable({
   orderDir,
   onSort,
   hasScore,
+  keywords = [],
 }: {
   rows: Row[];
   selected: Set<string>;
@@ -76,6 +78,7 @@ export function ResultsTable({
   orderDir: "asc" | "desc";
   onSort: (key: SortKey) => void;
   hasScore: boolean;
+  keywords?: string[];
 }) {
   const columns = hasScore ? COLUMNS : COLUMNS.filter((column) => column.key !== "score");
 
@@ -148,6 +151,7 @@ export function ResultsTable({
                       estimado
                     </Badge>
                   ) : null}
+                  <KeywordBadges row={row} keywords={keywords} />
                   {!row.isAvailable ? (
                     <Badge variant="destructive">indisponível</Badge>
                   ) : null}
@@ -255,6 +259,43 @@ function renderCell(key: Column["key"], row: Row) {
     default:
       return "—";
   }
+}
+
+/**
+ * Mostra quais palavras-chave casaram — e, quando nenhuma casou porque o
+ * conteúdo do anúncio ainda não foi carregado, diz isso em vez de deixar o
+ * usuário achar que a linha passou por engano.
+ */
+function KeywordBadges({ row, keywords }: { row: Row; keywords: string[] }) {
+  if (keywords.length === 0) return null;
+
+  const matched = matchedKeywords(row, keywords);
+
+  if (matched.length === 0) {
+    return hasContent(row) ? null : (
+      <Badge
+        variant="outline"
+        title="O conteúdo deste anúncio ainda não foi carregado. Calcule o preço real para trazer descrição e amenidades e verificar as palavras-chave."
+      >
+        não verificado
+      </Badge>
+    );
+  }
+
+  return (
+    <>
+      {matched.map((keyword) => (
+        <Badge key={keyword} variant="success" title="Palavra-chave encontrada">
+          {keyword}
+        </Badge>
+      ))}
+      {matched.length < keywords.length && !hasContent(row) ? (
+        <Badge variant="outline" title="As demais palavras ainda não puderam ser verificadas.">
+          parcial
+        </Badge>
+      ) : null}
+    </>
+  );
 }
 
 export function roomTypeLabel(roomType: string | null): string {

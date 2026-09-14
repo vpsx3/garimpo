@@ -91,6 +91,15 @@ export const filterDefinitionSchema = z
     houseRulesIncludeTerms: z.array(z.string().trim().min(2)).nullish(),
     houseRulesExcludeTerms: z.array(z.string().trim().min(2)).nullish(),
 
+    /**
+     * Busca livre por palavra-chave sobre título, descrição, amenidades e
+     * regras da casa. Existe porque o vocabulário canônico é fechado: "sauna"
+     * e "quadra de tênis" não viram chave, mas aparecem no texto do anúncio.
+     */
+    keywords: z.array(z.string().trim().min(2)).nullish(),
+    /** "all" exige todas as palavras; "any" basta uma. Padrão: "all". */
+    keywordsMode: z.enum(["all", "any"]).nullish(),
+
     // 7.4 Amenidades
     amenities: amenityExprSchema.nullish(),
 

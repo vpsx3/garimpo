@@ -43,6 +43,7 @@ export function toRow(
     isSuperhost: listing.isSuperhost ?? null,
     hostName: listing.hostName ?? null,
     amenities: canonicalizeAmenities(listing.amenities),
+    amenityLabels: listing.amenities?.filter((label): label is string => Boolean(label)) ?? [],
     instantBookable: listing.instantBookable ?? null,
     minNights: listing.minNights ?? null,
     maxNights: listing.maxNights ?? null,
@@ -147,6 +148,9 @@ export function applyDetail(row: Row, detail: RawListingDetail): Row {
     pictureCount: detail.pictureCount ?? row.pictureCount,
     pictureUrls: detail.pictureUrls ?? row.pictureUrls,
     amenities: amenities.length ? amenities : row.amenities,
+    amenityLabels: detail.amenities?.length
+      ? detail.amenities.filter((label): label is string => Boolean(label))
+      : row.amenityLabels,
     bedsPerGuest:
       bedsPerGuest(detail.beds ?? row.beds, detail.personCapacity ?? row.personCapacity) ??
       row.bedsPerGuest,

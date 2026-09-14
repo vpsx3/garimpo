@@ -158,7 +158,20 @@ export function Workspace() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <SearchForm onSearch={search} pending={searching} />
+      <SearchForm
+        onSearch={search}
+        pending={searching}
+        keywords={filter.keywords ?? []}
+        keywordsMode={filter.keywordsMode ?? "all"}
+        onKeywordsChange={(keywords, mode) =>
+          setFilter((current) => {
+            const next = { ...current, keywordsMode: mode };
+            if (keywords.length === 0) delete next.keywords;
+            else next.keywords = keywords;
+            return next;
+          })
+        }
+      />
 
       {notice ? (
         <p className="border-b bg-warning/10 px-4 py-1.5 text-[11px] text-warning">
@@ -237,6 +250,7 @@ export function Workspace() {
                   query={query}
                   rows={outcome.rows}
                   needsContent={
+                    Boolean(filter.keywords?.length) ||
                     Boolean(filter.amenities) ||
                     highlightTerms.length > 0 ||
                     Boolean(filter.descriptionIncludeTerms?.length) ||
@@ -281,6 +295,7 @@ export function Workspace() {
                   orderDir={orderDir}
                   onSort={sort}
                   hasScore={scoring}
+                  keywords={filter.keywords ?? []}
                 />
               ) : view === "cards" ? (
                 <ResultCards rows={visible} onOpen={setOpenRow} />

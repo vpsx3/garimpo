@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   allowedPolicies,
   applyFilter,
+  hasContent,
+  matchedKeywords,
+  matchesKeyword,
   attachAnchorLimits,
   evaluateAmenityExpr,
   haversineMeters,
@@ -31,6 +34,7 @@ function row(overrides: Partial<Row> = {}): Row {
     isSuperhost: true,
     hostName: null,
     amenities: ["air_conditioning", "washer"],
+    amenityLabels: ["Ar-condicionado", "Máquina de lavar"],
     instantBookable: true,
     minNights: 2,
     maxNights: 30,
@@ -165,6 +169,116 @@ describe("texto das avaliações", () => {
     expect(keep([row({ externalId: "sem" })], { reviewsExcludeTerms: ["barulho"] })).toEqual([
       "sem",
     ]);
+  });
+});
+
+describe("busca por palavra-chave", () => {
+  const comSauna = row({
+    externalId: "sauna",
+    title: "Chalé na serra",
+    description: "Tem sauna a vapor e lareira na sala.",
+    amenityLabels: ["Sauna", "Lareira"],
+  });
+  const comQuadra = row({
+    externalId: "quadra",
+    title: "Casa com quadra de tênis",
+    description: "Área de lazer completa.",
+    amenityLabels: ["Quadra de tênis", "Piscina"],
+  });
+  const semNada = row({
+    externalId: "simples",
+    title: "Apartamento no centro",
+    description: "Perto do metrô.",
+    amenityLabels: ["Wi-Fi"],
+  });
+
+  it("acha o que o vocabulário canônico não cobre", () => {
+    // "sauna" e "quadra de tênis" não são chaves canônicas — é exatamente
+    // por isso que a busca livre existe.
+    expect(matchesKeyword(comSauna, "sauna")).toBe(true);
+    expect(matchesKeyword(comQuadra, "quadra de tênis")).toBe(true);
+    expect(matchesKeyword(semNada, "sauna")).toBe(false);
+  });
+
+  it("ignora acento e caixa", () => {
+    expect(matchesKeyword(comQuadra, "QUADRA DE TENIS")).toBe(true);
+    expect(matchesKeyword(comSauna, "Lareira")).toBe(true);
+  });
+
+  it("procura no título, na descrição e nos rótulos de amenidade", () => {
+    expect(matchesKeyword(comQuadra, "casa com quadra")).toBe(true);
+    expect(matchesKeyword(comSauna, "vapor")).toBe(true);
+    expect(matchesKeyword(comQuadra, "piscina")).toBe(true);
+  });
+
+  it("também alcança os rótulos das amenidades canônicas", () => {
+    const comAr = row({
+      externalId: "ar",
+      title: "Sem menção no título",
+      description: "Nada aqui.",
+      amenityLabels: [],
+      amenities: ["air_conditioning"],
+    });
+    expect(matchesKeyword(comAr, "ar-condicionado")).toBe(true);
+  });
+
+  it("modo 'todas' exige todas as palavras", () => {
+    const rows = [comSauna, comQuadra, semNada];
+    expect(keep(rows, { keywords: ["piscina", "quadra"], keywordsMode: "all" })).toEqual([
+      "quadra",
+    ]);
+  });
+
+  it("modo 'qualquer' basta uma", () => {
+    const rows = [comSauna, comQuadra, semNada];
+    expect(keep(rows, { keywords: ["sauna", "quadra"], keywordsMode: "any" })).toEqual([
+      "sauna",
+      "quadra",
+    ]);
+  });
+
+  it("o padrão é exigir todas", () => {
+    const rows = [comSauna, comQuadra];
+    expect(keep(rows, { keywords: ["sauna", "quadra"] })).toEqual([]);
+  });
+
+  it("anúncio sem conteúdo carregado não é reprovado por ausência", () => {
+    // Antes do passo 2 só existe o título: um anúncio com sauna cujo título
+    // não menciona sauna não pode ser descartado por isso.
+    const naoCarregado = row({
+      externalId: "pendente",
+      title: "Apartamento",
+      description: null,
+      houseRules: null,
+      amenityLabels: [],
+      amenities: [],
+    });
+    expect(hasContent(naoCarregado)).toBe(false);
+    expect(keep([naoCarregado], { keywords: ["sauna"] })).toEqual(["pendente"]);
+  });
+
+  it("mas é reprovado depois que o conteúdo chega e nada casa", () => {
+    const carregado = row({
+      externalId: "verificado",
+      title: "Apartamento",
+      description: "Sem área de lazer.",
+      amenityLabels: ["Wi-Fi"],
+    });
+    expect(hasContent(carregado)).toBe(true);
+    expect(keep([carregado], { keywords: ["sauna"] })).toEqual([]);
+  });
+
+  it("reporta quais palavras casaram, para a UI explicar o porquê", () => {
+    expect(matchedKeywords(comQuadra, ["piscina", "sauna", "quadra"])).toEqual([
+      "piscina",
+      "quadra",
+    ]);
+  });
+
+  it("palavra-chave que zera o resultado aparece no diagnóstico", () => {
+    const outcome = applyFilter([comSauna, comQuadra], { keywords: ["heliponto"] });
+    expect(outcome.rows).toHaveLength(0);
+    expect(outcome.culprits.map((c) => c.key)).toEqual(["keywords"]);
   });
 });
 

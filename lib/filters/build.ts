@@ -113,7 +113,22 @@ select
     v.verdict,
     v.note as verdict_note,
     (select count(*)::int from listing_snapshots h
-      where h.listing_id = l.id and h.search_id = ${searchParam}) as snapshot_count,${anchorDistances}
+      where h.listing_id = l.id and h.search_id = ${searchParam}) as snapshot_count,
+    -- Histórico para o sparkline da linha. Só faz sentido com ≥ 2 pontos;
+    -- a UI esconde o gráfico abaixo disso em vez de desenhar uma reta.
+    (select coalesce(json_agg(
+        json_build_object(
+          'captured_at', h.captured_at,
+          'effective_nightly', h.effective_nightly
+        ) order by h.captured_at
+      ), '[]'::json)
+      from (
+        select captured_at, effective_nightly
+        from listing_snapshots
+        where listing_id = l.id and search_id = ${searchParam}
+        order by captured_at desc
+        limit 20
+      ) h) as price_history,${anchorDistances}
 from listings l
 join ultimo_snapshot s on s.listing_id = l.id
 left join listing_verdicts v on v.listing_id = l.id

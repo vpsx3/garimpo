@@ -15,17 +15,23 @@ function build(filter: FilterDefinition) {
   return buildFilterQuery({ searchId: SEARCH_ID, filter });
 }
 
-/** Nenhum valor pode aparecer no texto: só placeholders. */
-function assertParameterized(text: string, params: unknown[]) {
-  for (const param of params) {
-    if (typeof param === "number") {
-      // Um número solto no texto seria concatenação de valor. Os únicos
-      // números literais permitidos são o SRID 4326 e os índices $n.
-      const literals = text.match(/(?<![$\w.])\d+(\.\d+)?(?![\w])/g) ?? [];
-      expect(literals.every((literal) => literal === "4326" || literal === "0")).toBe(true);
-    }
-    if (typeof param === "string" && param.length > 3) {
-      expect(text).not.toContain(param);
+/**
+ * Nenhum valor vindo do usuário pode aparecer no texto — só placeholders.
+ *
+ * A checagem recebe os valores explicitamente em vez de varrer `params`:
+ * números como 0 e 1 aparecem legitimamente no SQL escrito à mão
+ * (`nullif(x, 0)`), então varrer tudo produziria falso positivo.
+ */
+function assertParameterized(
+  built: { text: string; params: unknown[] },
+  values: (number | string)[],
+) {
+  for (const value of values) {
+    expect(built.params).toContain(value);
+    if (typeof value === "number") {
+      expect(built.text).not.toMatch(new RegExp(`(?<![$\\w.])${value}(?![\\w.])`));
+    } else {
+      expect(built.text).not.toContain(value);
     }
   }
 }
@@ -61,10 +67,9 @@ describe("estrutura da consulta", () => {
 
 describe("7.1 preço", () => {
   it("filtra pela diária efetiva, não pela anunciada", () => {
-    const { text, params } = build({ effectiveNightlyMax: 450 });
-    expect(text).toContain("s.effective_nightly <= $2");
-    expect(params).toContain(450);
-    assertParameterized(text, params);
+    const built = build({ effectiveNightlyMax: 450 });
+    expect(built.text).toContain("s.effective_nightly <= $2");
+    assertParameterized(built, [450]);
   });
 
   it("razão limpeza/total protege contra divisão por zero", () => {
@@ -275,12 +280,13 @@ describe("7.8 geografia", () => {
   });
 
   it("exclusão por raio afasta de área ruidosa", () => {
-    const { text, params } = build({
+    const built = build({
       excludeRadius: [{ lat: 38.71, lng: -9.14, minDistanceM: 400 }],
     });
-    expect(text).toContain("not extensions.ST_DWithin(l.geo, extensions.ST_SetSRID");
-    expect(params).toContain(400);
-    assertParameterized(text, params);
+    expect(built.text).toContain(
+      "not extensions.ST_DWithin(l.geo, extensions.ST_SetSRID",
+    );
+    assertParameterized(built, [400, 38.71, -9.14]);
   });
 
   it("polígono fecha o anel e vai como parâmetro", () => {

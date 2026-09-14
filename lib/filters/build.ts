@@ -72,9 +72,21 @@ export function buildFilterQuery(options: BuildOptions): BuiltQuery {
   const searchParam = builder.param(options.searchId);
   const predicates = buildPredicates(options.filter, builder, searchParam);
 
+  // Distância a cada âncora, e não só à mais próxima: a tabela mostra uma
+  // coluna por âncora, porque "perto do escritório" e "perto da escola" são
+  // perguntas diferentes.
   const anchorDistances = `
     (select min(extensions.ST_Distance(l.geo, a.geo))::int
-      from anchors a where a.search_id = ${searchParam}) as min_anchor_distance_m`;
+      from anchors a where a.search_id = ${searchParam}) as min_anchor_distance_m,
+    (select coalesce(json_agg(
+        json_build_object(
+          'anchorId', a.id,
+          'label', a.label,
+          'meters', extensions.ST_Distance(l.geo, a.geo)::int,
+          'maxDistanceM', a.max_distance_m
+        ) order by a.created_at
+      ), '[]'::json)
+      from anchors a where a.search_id = ${searchParam}) as anchor_distances`;
 
   const orderColumn = ORDER_COLUMNS[options.orderBy ?? "effective_nightly"];
   const orderDir = options.orderDir === "desc" ? "desc" : "asc";

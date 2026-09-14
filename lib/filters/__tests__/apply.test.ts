@@ -242,9 +242,20 @@ describe("busca por palavra-chave", () => {
     expect(keep(rows, { keywords: ["sauna", "quadra"] })).toEqual([]);
   });
 
-  it("anúncio sem conteúdo carregado não é reprovado por ausência", () => {
-    // Antes do passo 2 só existe o título: um anúncio com sauna cujo título
-    // não menciona sauna não pode ser descartado por isso.
+  it("é estrito: sem a palavra, não lista", () => {
+    const carregado = row({
+      externalId: "verificado",
+      title: "Apartamento",
+      description: "Sem área de lazer.",
+      amenityLabels: ["Wi-Fi"],
+    });
+    expect(hasContent(carregado)).toBe(true);
+    expect(keep([carregado], { keywords: ["sauna"] })).toEqual([]);
+  });
+
+  it("estrito vale também para quem ainda não teve o conteúdo carregado", () => {
+    // A UI compensa isso carregando o conteúdo sozinha quando há
+    // palavra-chave; o filtro em si não abre exceção.
     const naoCarregado = row({
       externalId: "pendente",
       title: "Apartamento",
@@ -254,18 +265,18 @@ describe("busca por palavra-chave", () => {
       amenities: [],
     });
     expect(hasContent(naoCarregado)).toBe(false);
-    expect(keep([naoCarregado], { keywords: ["sauna"] })).toEqual(["pendente"]);
+    expect(keep([naoCarregado], { keywords: ["sauna"] })).toEqual([]);
   });
 
-  it("mas é reprovado depois que o conteúdo chega e nada casa", () => {
-    const carregado = row({
-      externalId: "verificado",
-      title: "Apartamento",
-      description: "Sem área de lazer.",
-      amenityLabels: ["Wi-Fi"],
+  it("o título sozinho já basta para casar, antes de qualquer carregamento", () => {
+    const soTitulo = row({
+      externalId: "titulo",
+      title: "Casa com sauna e piscina",
+      description: null,
+      amenityLabels: [],
+      amenities: [],
     });
-    expect(hasContent(carregado)).toBe(true);
-    expect(keep([carregado], { keywords: ["sauna"] })).toEqual([]);
+    expect(keep([soTitulo], { keywords: ["sauna"] })).toEqual(["titulo"]);
   });
 
   it("reporta quais palavras casaram, para a UI explicar o porquê", () => {

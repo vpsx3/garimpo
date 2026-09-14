@@ -17,6 +17,7 @@ import { normalizeListingDetail, normalizeReview } from "@/lib/providers/apify/n
 import { collectReviewNodes, extractPriceBreakdown } from "./shape";
 import { fetchDeferredState, locationSlug, pageCursor } from "./page";
 import { collectSearchResults, normalizeSearchResult } from "./search";
+import { extractPdpDetail } from "./pdp";
 import { asNumber } from "@/lib/providers/extract";
 
 const ORIGIN = "https://www.airbnb.com.br";
@@ -73,10 +74,43 @@ export class DirectProvider implements SearchProvider {
 
   async getListingDetail(listingId: string): Promise<RawListingDetail> {
     const state = await fetchDeferredState(this.roomUrl(listingId));
+    const pdp = extractPdpDetail(state);
+
+    if (!pdp.description && pdp.amenities.length === 0) {
+      // Detalhe vazio é falha silenciosa: o anúncio sumiu, ou a página mudou
+      // de forma. Devolver um objeto oco faria o filtro de palavra-chave
+      // descartar o anúncio como se ele não tivesse a amenidade.
+      throw new ListingUnavailableError(
+        listingId,
+        `A página do anúncio ${listingId} não trouxe descrição nem amenidades.`,
+      );
+    }
+
     const detail = normalizeListingDetail({
       id: listingId,
-      ...flattenPdp(state),
+      description: pdp.description,
+      houseRules: pdp.houseRules,
+      amenities: pdp.amenities,
+      personCapacity: pdp.personCapacity,
+      bedrooms: pdp.bedrooms,
+      beds: pdp.beds,
+      bathrooms: pdp.bathrooms,
+      rating: pdp.ratingOverall,
+      reviewsCount: pdp.reviewCount,
+      ratingCleanliness: pdp.ratingCleanliness,
+      ratingAccuracy: pdp.ratingAccuracy,
+      ratingCheckin: pdp.ratingCheckin,
+      ratingCommunication: pdp.ratingCommunication,
+      ratingLocation: pdp.ratingLocation,
+      ratingValue: pdp.ratingValue,
+      hostName: pdp.hostName,
+      isSuperhost: pdp.hostIsSuperhost,
+      hostListingCount: pdp.hostListingCount,
+      hostResponseRate: pdp.hostResponseRate,
+      lat: pdp.lat,
+      lng: pdp.lng,
     });
+
     if (!detail) throw new ListingUnavailableError(listingId);
     return rawListingDetailSchema.parse(detail);
   }
@@ -144,45 +178,6 @@ export class DirectProvider implements SearchProvider {
     }
     return url.toString();
   }
-}
-
-/** Achata o estado da página de anúncio para os extratores defensivos. */
-function flattenPdp(state: unknown): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-
-  const visit = (node: unknown, depth = 0) => {
-    if (depth > 12 || node === null || typeof node !== "object") return;
-    if (Array.isArray(node)) {
-      for (const item of node) visit(item, depth + 1);
-      return;
-    }
-    const record = node as Record<string, unknown>;
-
-    // Guarda os campos de interesse na primeira vez que aparecem.
-    for (const key of [
-      "description",
-      "houseRules",
-      "amenities",
-      "personCapacity",
-      "bedrooms",
-      "bathrooms",
-      "beds",
-      "cancellationPolicy",
-      "coordinate",
-      "location",
-      "title",
-      "name",
-    ]) {
-      if (record[key] !== undefined && out[key] === undefined) {
-        out[key] = record[key];
-      }
-    }
-
-    for (const value of Object.values(record)) visit(value, depth + 1);
-  };
-
-  visit(state);
-  return out;
 }
 
 export function nightsBetween(checkIn: string, checkOut: string): number {

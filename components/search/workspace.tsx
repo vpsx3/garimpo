@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Coins,
   LayoutGrid,
@@ -21,6 +21,7 @@ import { DetailDrawer } from "@/components/results/detail-drawer";
 import { WeightsEditor } from "@/components/scoring/weights-editor";
 import { SearchForm } from "./search-form";
 import { PriceStep } from "./price-step";
+import { useContentLoader } from "./use-content-loader";
 import { postJson } from "@/lib/api";
 import { applyFilter } from "@/lib/filters/apply";
 import { withAnchorDistances } from "@/lib/search/pipeline";
@@ -55,6 +56,17 @@ export function Workspace() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openRow, setOpenRow] = useState<Row | null>(null);
 
+  const mergeRows = useCallback((updates: Map<string, Partial<Row>>) => {
+    setRows((current) =>
+      current.map((row) => {
+        const update = updates.get(row.externalId);
+        return update ? { ...row, ...update } : row;
+      }),
+    );
+  }, []);
+
+  const content = useContentLoader(mergeRows);
+
   const search = useCallback(async (input: SearchQueryInput) => {
     setSearching(true);
     setError(null);
@@ -65,6 +77,7 @@ export function Workspace() {
       setQuery(input);
       setSearched(true);
       setSelected(new Set());
+      content.reset();
       if (response.fellBackTo) {
         setNotice("O adapter direto ficou obsoleto; a busca caiu para a Apify.");
       }
@@ -75,7 +88,7 @@ export function Workspace() {
     } finally {
       setSearching(false);
     }
-  }, []);
+  }, [content]);
 
   // As âncoras entram como distâncias antes de qualquer filtro geográfico.
   const withDistances = useMemo(
@@ -108,6 +121,24 @@ export function Workspace() {
     });
   }, [outcome.rows, weights, scoring, orderBy, orderDir]);
 
+  const temPalavras = (filter.keywords?.length ?? 0) > 0;
+  const semConteudo = rows.filter((row) => row.description === null).length;
+  const disparado = useRef(false);
+
+  // Com filtro estrito de palavra-chave, listar só o que já foi verificado
+  // exigiria o usuário clicar num botão antes de ver qualquer coisa. Então o
+  // carregamento começa sozinho — e só quando há palavra-chave, para não
+  // gastar chamadas à toa.
+  useEffect(() => {
+    if (!temPalavras || !query || semConteudo === 0) {
+      disparado.current = false;
+      return;
+    }
+    if (disparado.current || content.progress.running) return;
+    disparado.current = true;
+    void content.load(query, rows, rows.some((row) => row.priceSource === "search"));
+  }, [temPalavras, query, rows, semConteudo, content]);
+
   const highlightTerms = useMemo(
     () => [
       ...(filter.reviewsIncludeTerms ?? []),
@@ -115,15 +146,6 @@ export function Workspace() {
     ],
     [filter.reviewsIncludeTerms, filter.reviewsExcludeTerms],
   );
-
-  const mergeRows = useCallback((updates: Map<string, Partial<Row>>) => {
-    setRows((current) =>
-      current.map((row) => {
-        const update = updates.get(row.externalId);
-        return update ? { ...row, ...update } : row;
-      }),
-    );
-  }, []);
 
   function setVerdict(externalId: string, verdict: Verdict) {
     setRows((current) =>
@@ -245,7 +267,9 @@ export function Workspace() {
 
               <div className="flex-1" />
 
-              {query ? (
+              {content.progress.running || content.progress.error ? (
+                <ContentProgressBar progress={content.progress} onCancel={content.cancel} />
+              ) : query ? (
                 <PriceStep
                   query={query}
                   rows={outcome.rows}
@@ -315,6 +339,38 @@ export function Workspace() {
         onClose={() => setOpenRow(null)}
         onVerdictChange={setVerdict}
       />
+    </div>
+  );
+}
+
+function ContentProgressBar({
+  progress,
+  onCancel,
+}: {
+  progress: { running: boolean; done: number; total: number; error: string | null };
+  onCancel: () => void;
+}) {
+  if (progress.error) {
+    return (
+      <span className="max-w-96 truncate text-[11px] text-destructive">
+        {progress.error}
+      </span>
+    );
+  }
+
+  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1 w-24 overflow-hidden rounded bg-muted">
+        <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="tnum text-[11px] text-muted-foreground">
+        verificando {progress.done}/{progress.total}
+      </span>
+      <Button size="xs" variant="ghost" onClick={onCancel}>
+        parar
+      </Button>
     </div>
   );
 }

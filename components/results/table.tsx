@@ -11,7 +11,7 @@ import {
   formatPercent,
   formatRating,
 } from "@/lib/format";
-import { hasContent, matchedKeywords } from "@/lib/filters/apply";
+import { matchedKeywords } from "@/lib/filters/apply";
 import type { Row } from "./types";
 import { ScoreCell } from "@/components/scoring/score-cell";
 
@@ -271,17 +271,7 @@ function KeywordBadges({ row, keywords }: { row: Row; keywords: string[] }) {
 
   const matched = matchedKeywords(row, keywords);
 
-  if (matched.length === 0) {
-    return hasContent(row) ? null : (
-      <Badge
-        variant="outline"
-        title="O conteúdo deste anúncio ainda não foi carregado. Calcule o preço real para trazer descrição e amenidades e verificar as palavras-chave."
-      >
-        não verificado
-      </Badge>
-    );
-  }
-
+  // Toda linha visível já casou com o filtro, então só resta mostrar onde.
   return (
     <>
       {matched.map((keyword) => (
@@ -289,11 +279,6 @@ function KeywordBadges({ row, keywords }: { row: Row; keywords: string[] }) {
           {keyword}
         </Badge>
       ))}
-      {matched.length < keywords.length && !hasContent(row) ? (
-        <Badge variant="outline" title="As demais palavras ainda não puderam ser verificadas.">
-          parcial
-        </Badge>
-      ) : null}
     </>
   );
 }

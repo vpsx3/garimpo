@@ -98,12 +98,24 @@ export function pageCursor(itemsOffset: number): string {
   ).toString("base64");
 }
 
-/** "Lisboa, Portugal" → "Lisboa--Portugal", como a origem escreve na URL. */
+/**
+ * "São Paulo, Brasil" → "Sao-Paulo--Brasil".
+ *
+ * O acento **precisa** sair. O resolvedor de lugar da origem não entende
+ * caracteres acentuados no caminho da URL e, em vez de errar, devolve
+ * resultados de outro lugar qualquer: "São Paulo--Brasil" cai no hemisfério
+ * norte, "Florianópolis--Brasil" cai no Rio Grande do Sul. Sem acento, os dois
+ * resolvem certo — e como isso atinge quase toda cidade brasileira, a
+ * normalização é obrigatória, não cosmética.
+ */
 export function locationSlug(query: string): string {
-  return encodeURIComponent(
-    query
-      .trim()
-      .replace(/\s*,\s*/g, "--")
-      .replace(/\s+/g, "-"),
-  ).replace(/%2D%2D/gi, "--");
+  const semAcento = query
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+
+  return semAcento
+    .replace(/\s*,\s*/g, "--")
+    .replace(/\s+/g, "-")
+    .replace(/[^A-Za-z0-9\-]/g, "");
 }

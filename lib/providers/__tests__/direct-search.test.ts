@@ -134,6 +134,22 @@ describe("construção de URL", () => {
     expect(locationSlug("Rio de Janeiro")).toBe("Rio-de-Janeiro");
   });
 
+  it("remove acento — sem isso a origem devolve outro lugar", () => {
+    // Verificado ao vivo: "São Paulo--Brasil" cai no hemisfério norte e
+    // "Florianópolis--Brasil" cai no Rio Grande do Sul. Sem acento, ambos
+    // resolvem certo. Como isso atinge quase toda cidade brasileira, é o
+    // teste que protege o produto inteiro no Brasil.
+    expect(locationSlug("Estado de São Paulo, Brasil")).toBe(
+      "Estado-de-Sao-Paulo--Brasil",
+    );
+    expect(locationSlug("Florianópolis, Brasil")).toBe("Florianopolis--Brasil");
+    expect(locationSlug("Brasília")).toBe("Brasilia");
+  });
+
+  it("descarta pontuação que quebraria o caminho da URL", () => {
+    expect(locationSlug("São Paulo (SP), Brasil")).toBe("Sao-Paulo-SP--Brasil");
+  });
+
   it("gera o cursor de paginação no formato esperado", () => {
     const cursor = pageCursor(18);
     const decoded = JSON.parse(Buffer.from(cursor, "base64").toString("utf8"));

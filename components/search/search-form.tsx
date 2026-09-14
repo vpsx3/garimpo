@@ -27,7 +27,7 @@ export function SearchForm({
   keywordsMode: "all" | "any";
   onKeywordsChange: (keywords: string[], mode: "all" | "any") => void;
 }) {
-  const [locationQuery, setLocationQuery] = useState("");
+  const [locationQuery, setLocationQuery] = useState("Estado de São Paulo, Brasil");
   const [checkIn, setCheckIn] = useState(isoDaysFromNow(30));
   const [checkOut, setCheckOut] = useState(isoDaysFromNow(35));
   const [guests, setGuests] = useState(2);

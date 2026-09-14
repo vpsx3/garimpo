@@ -316,17 +316,12 @@ export function buildPredicates(filter: FilterDefinition): Predicate[] {
     const label =
       mode === "any" ? "Qualquer palavra-chave" : "Todas as palavras-chave";
 
+    // Estrito por decisão do usuário: anúncio que não tem a palavra não é
+    // listado. Para que isso não esconda anúncios por falta de dado, a UI
+    // carrega o conteúdo automaticamente quando há palavra-chave ativa.
     add("keywords", label, (row) => {
       const found = keywords.filter((keyword) => matchesKeyword(row, keyword));
-      if (mode === "any") {
-        // Sem nenhum acerto, o anúncio só sobrevive se ainda não dá para
-        // afirmar nada sobre ele.
-        return found.length > 0 || !hasContent(row);
-      }
-      if (found.length === keywords.length) return true;
-      // Em modo "todas", o que falta pode estar num conteúdo ainda não
-      // carregado — não dá para reprovar por ausência de dado.
-      return !hasContent(row);
+      return mode === "any" ? found.length > 0 : found.length === keywords.length;
     });
   }
 

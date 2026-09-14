@@ -1,0 +1,34 @@
+{
+  "data": {
+    "presentation": {
+      "staysSearch": {
+        "results": {
+          "searchResults": [
+            {
+              "listing": {
+                "id": "U3RheUxpc3Rpbmc6MTExMjIyMw==",
+                "name": "Loft com vista para o Tejo",
+                "roomTypeCategory": "entire_home",
+                "personCapacity": 2,
+                "avgRatingA11yLabel": "4,92 de 5 estrelas em 128 avaliações",
+                "avgRating": 4.92,
+                "reviewsCount": 128,
+                "coordinate": { "latitude": 38.7071, "longitude": -9.1355 },
+                "contextualPictures": [
+                  { "picture": "https://a0.muscache.com/im/pictures/x.jpg" },
+                  { "picture": "https://a0.muscache.com/im/pictures/y.jpg" }
+                ]
+              },
+              "pricingQuote": {
+                "structuredStayDisplayPrice": {
+                  "primaryLine": { "price": "R$ 520" },
+                  "secondaryLine": { "price": "R$ 2.600 no total" }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

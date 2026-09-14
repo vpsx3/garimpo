@@ -1,0 +1,17 @@
+[
+  {
+    "id": "r-1",
+    "createdAt": "2025-03-14T00:00:00Z",
+    "rating": 5,
+    "language": "pt",
+    "comments": "Apartamento impecável e silencioso. Voltaria sem pensar."
+  },
+  {
+    "reviewId": "r-2",
+    "localizedDate": "janeiro de 2025",
+    "stars": 3,
+    "lang": "pt",
+    "comment": "Bom, mas tinha barulho de obra na rua durante a manhã."
+  },
+  { "id": "r-3", "comments": "   " }
+]

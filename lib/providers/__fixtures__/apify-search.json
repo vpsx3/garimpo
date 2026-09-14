@@ -1,0 +1,40 @@
+[
+  {
+    "id": "12345678",
+    "url": "https://www.airbnb.com.br/rooms/12345678",
+    "name": "Apartamento reformado no Príncipe Real",
+    "propertyType": "Apartamento inteiro",
+    "roomType": "Entire home/apt",
+    "personCapacity": 4,
+    "bedrooms": 2,
+    "beds": 3,
+    "bathrooms": 1.5,
+    "bathroomLabel": "1,5 banheiro compartilhado",
+    "lat": 38.7169,
+    "lng": -9.1459,
+    "images": ["https://a0.muscache.com/im/pictures/a.jpg", "https://a0.muscache.com/im/pictures/b.jpg"],
+    "rating": 4.87,
+    "reviewsCount": 214,
+    "isSuperhost": true,
+    "hostId": "9988776",
+    "hostName": "Marta",
+    "amenities": ["Ar-condicionado", "Wi-Fi", { "title": "Máquina de lavar" }],
+    "instantBookable": true,
+    "minNights": 2,
+    "pricing": { "rate": { "amount": "R$ 412,90", "currency": "BRL" }, "total": { "amount": "R$ 2.064,50" } }
+  },
+  {
+    "listingId": 87654321,
+    "title": "Quarto privativo perto do metrô",
+    "roomTypeCategory": "private_room",
+    "coordinates": { "lat": "38.7223", "lng": "-9.1393" },
+    "avgRating": 96,
+    "numberOfReviews": "31",
+    "price": { "rate": 180, "currency": "BRL" },
+    "photosCount": 12
+  },
+  {
+    "title": "Anúncio sem id nenhum",
+    "price": { "rate": 100 }
+  }
+]

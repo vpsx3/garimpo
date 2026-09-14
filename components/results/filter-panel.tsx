@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Save } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -28,7 +27,6 @@ import {
   type FilterDefinition,
 } from "@/lib/filters/types";
 import { AmenityBuilder } from "./amenity-builder";
-import type { FilterSetRow } from "@/lib/db/queries";
 
 type Update = <K extends keyof FilterDefinition>(
   key: K,
@@ -39,20 +37,16 @@ export function FilterPanel({
   filter,
   onChange,
   count,
-  counting,
-  filterSets,
-  onSaveFilterSet,
-  onLoadFilterSet,
+  total,
   hasAnchors,
+  anchorsSlot,
 }: {
   filter: FilterDefinition;
   onChange: (next: FilterDefinition) => void;
   count: number | null;
-  counting: boolean;
-  filterSets: FilterSetRow[];
-  onSaveFilterSet: (label: string) => Promise<void>;
-  onLoadFilterSet: (id: string) => void;
+  total: number;
   hasAnchors: boolean;
+  anchorsSlot?: React.ReactNode;
 }) {
   const update: Update = (key, value) => {
     const next = { ...filter };
@@ -67,10 +61,8 @@ export function FilterPanel({
     <div className="flex h-full flex-col">
       <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-background px-3 py-2">
         <div className="text-xs">
-          <span className="tnum font-semibold">
-            {counting ? "…" : (count ?? "—")}
-          </span>{" "}
-          <span className="text-muted-foreground">resultados</span>
+          <span className="tnum font-semibold">{count ?? "—"}</span>
+          <span className="text-muted-foreground"> de {total} anúncios</span>
         </div>
         <div className="flex items-center gap-1">
           {activeCount > 0 ? (
@@ -88,12 +80,6 @@ export function FilterPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 pb-8">
-        <SaveLoadRow
-          filterSets={filterSets}
-          onSave={onSaveFilterSet}
-          onLoad={onLoadFilterSet}
-        />
-
         <Accordion
           type="multiple"
           defaultValue={["preco", "avaliacoes"]}
@@ -417,6 +403,7 @@ export function FilterPanel({
           </Section>
 
           <Section value="geografia" title="Geografia">
+            {anchorsSlot}
             {hasAnchors ? (
               <>
                 <TriStateField
@@ -453,12 +440,7 @@ export function FilterPanel({
                   }
                 />
               </>
-            ) : (
-              <p className="text-[11px] text-muted-foreground">
-                Nenhuma âncora definida. Adicione pontos de referência na aba
-                Mapa para filtrar por distância.
-              </p>
-            )}
+            ) : null}
           </Section>
 
           <Section value="triagem" title="Triagem">
@@ -670,63 +652,6 @@ function TermsField({
           usar preset
         </Button>
       ) : null}
-    </div>
-  );
-}
-
-function SaveLoadRow({
-  filterSets,
-  onSave,
-  onLoad,
-}: {
-  filterSets: FilterSetRow[];
-  onSave: (label: string) => Promise<void>;
-  onLoad: (id: string) => void;
-}) {
-  const [label, setLabel] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  return (
-    <div className="space-y-2 border-b py-3">
-      {filterSets.length > 0 ? (
-        <Select onValueChange={onLoad}>
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue placeholder="Carregar conjunto salvo" />
-          </SelectTrigger>
-          <SelectContent>
-            {filterSets.map((set) => (
-              <SelectItem key={set.id} value={set.id}>
-                {set.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : null}
-
-      <div className="flex gap-1">
-        <Input
-          className="h-8 text-xs"
-          placeholder="Salvar filtros como…"
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!label || saving}
-          onClick={async () => {
-            setSaving(true);
-            try {
-              await onSave(label);
-              setLabel("");
-            } finally {
-              setSaving(false);
-            }
-          }}
-        >
-          <Save className="h-3.5 w-3.5" />
-        </Button>
-      </div>
     </div>
   );
 }

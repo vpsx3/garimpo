@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Star } from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
@@ -11,13 +11,22 @@ import {
   formatPercent,
   formatRating,
 } from "@/lib/format";
-import type { OrderKey } from "@/lib/filters/build";
-import type { ResultRow } from "./types";
-import { PriceSparkline } from "./sparkline";
+import type { Row } from "./types";
 import { ScoreCell } from "@/components/scoring/score-cell";
 
+export type SortKey =
+  | "score"
+  | "effectiveNightly"
+  | "totalPrice"
+  | "ratingOverall"
+  | "reviewCount"
+  | "minAnchorDistanceM"
+  | "beds"
+  | "cleaningFee"
+  | "cleaningRatio";
+
 type Column = {
-  key: OrderKey | "score" | "anchors";
+  key: SortKey | "anchors" | "link";
   label: string;
   hint?: string;
   align?: "left" | "right";
@@ -27,25 +36,26 @@ type Column = {
 const COLUMNS: Column[] = [
   { key: "score", label: "Score", align: "right", sortable: true },
   {
-    key: "effective_nightly",
+    key: "effectiveNightly",
     label: "Diária efetiva",
-    hint: "Total da estadia dividido pelas noites — inclui limpeza, serviço e impostos.",
+    hint: "Total da estadia dividido pelas noites — inclui limpeza, serviço e impostos. Só existe depois de calcular o preço real.",
     align: "right",
     sortable: true,
   },
-  { key: "total_price", label: "Total", align: "right", sortable: true },
-  { key: "rating_overall", label: "Nota", align: "right", sortable: true },
-  { key: "review_count", label: "Aval.", align: "right", sortable: true },
+  { key: "totalPrice", label: "Total", align: "right", sortable: true },
+  { key: "ratingOverall", label: "Nota", align: "right", sortable: true },
+  { key: "reviewCount", label: "Aval.", align: "right", sortable: true },
   { key: "anchors", label: "Distância", align: "right" },
   { key: "beds", label: "Camas", align: "right", sortable: true },
-  { key: "cleaning_fee", label: "Limpeza", align: "right", sortable: true },
+  { key: "cleaningFee", label: "Limpeza", align: "right", sortable: true },
   {
-    key: "cleaning_ratio",
+    key: "cleaningRatio",
     label: "% limp.",
     hint: "Quanto do total é taxa de limpeza.",
     align: "right",
     sortable: true,
   },
+  { key: "link", label: "", align: "right" },
 ];
 
 export function ResultsTable({
@@ -58,21 +68,21 @@ export function ResultsTable({
   onSort,
   hasScore,
 }: {
-  rows: ResultRow[];
+  rows: Row[];
   selected: Set<string>;
   onToggleSelect: (id: string) => void;
-  onOpen: (row: ResultRow) => void;
+  onOpen: (row: Row) => void;
   orderBy: string;
   orderDir: "asc" | "desc";
-  onSort: (key: string) => void;
+  onSort: (key: SortKey) => void;
   hasScore: boolean;
 }) {
-  const columns = hasScore ? COLUMNS : COLUMNS.filter((c) => c.key !== "score");
+  const columns = hasScore ? COLUMNS : COLUMNS.filter((column) => column.key !== "score");
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[900px] border-collapse text-xs">
-        <thead className="sticky top-12 z-10 bg-background">
+      <table className="w-full min-w-[920px] border-collapse text-xs">
+        <thead className="sticky top-0 z-10 bg-background">
           <tr className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
             <th className="w-8 px-2 py-2" />
             <th className="px-2 py-2 text-left font-medium">Anúncio</th>
@@ -85,7 +95,7 @@ export function ResultsTable({
                   column.align === "right" ? "text-right" : "text-left",
                   column.sortable && "cursor-pointer select-none hover:text-foreground",
                 )}
-                onClick={column.sortable ? () => onSort(column.key) : undefined}
+                onClick={column.sortable ? () => onSort(column.key as SortKey) : undefined}
               >
                 <span className="inline-flex items-center gap-1">
                   {column.label}
@@ -104,7 +114,7 @@ export function ResultsTable({
         <tbody>
           {rows.map((row) => (
             <tr
-              key={row.id}
+              key={row.externalId}
               className={cn(
                 "border-b transition-colors hover:bg-accent/40",
                 row.verdict === "rejected" && "opacity-45",
@@ -113,8 +123,8 @@ export function ResultsTable({
             >
               <td className="px-2 py-1.5 align-middle">
                 <Checkbox
-                  checked={selected.has(row.id)}
-                  onCheckedChange={() => onToggleSelect(row.id)}
+                  checked={selected.has(row.externalId)}
+                  onCheckedChange={() => onToggleSelect(row.externalId)}
                   aria-label="Selecionar para comparação"
                 />
               </td>
@@ -125,22 +135,20 @@ export function ResultsTable({
                   onClick={() => onOpen(row)}
                   className="block w-full truncate text-left font-medium hover:underline"
                 >
-                  {row.title ?? `Anúncio ${row.external_id}`}
+                  {row.title ?? `Anúncio ${row.externalId}`}
                 </button>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
-                  <span>{roomTypeLabel(row.room_type)}</span>
-                  {row.host_is_superhost ? (
-                    <Badge variant="warning">superhost</Badge>
-                  ) : null}
-                  {row.price_source === "search" ? (
+                  <span>{roomTypeLabel(row.roomType)}</span>
+                  {row.isSuperhost ? <Badge variant="warning">superhost</Badge> : null}
+                  {row.priceSource === "search" ? (
                     <Badge
                       variant="outline"
-                      title="Preço estimado da busca; a cotação real ainda não foi buscada."
+                      title="Preço estimado da busca. Calcule o preço real para incluir limpeza, serviço e impostos."
                     >
                       estimado
                     </Badge>
                   ) : null}
-                  {!row.is_available ? (
+                  {!row.isAvailable ? (
                     <Badge variant="destructive">indisponível</Badge>
                   ) : null}
                 </div>
@@ -165,70 +173,84 @@ export function ResultsTable({
   );
 }
 
-function renderCell(key: Column["key"], row: ResultRow) {
+function renderCell(key: Column["key"], row: Row) {
   switch (key) {
     case "score":
       return row.score === undefined ? (
         "—"
       ) : (
-        <ScoreCell score={row.score} breakdown={row.score_breakdown} />
+        <ScoreCell
+          score={row.score}
+          breakdown={row.score_breakdown as never}
+        />
       );
 
-    case "effective_nightly":
-      // O contraste entre diária efetiva e diária anunciada é o argumento de
-      // venda do produto: os dois aparecem sempre lado a lado.
+    case "effectiveNightly":
+      // O contraste entre a diária efetiva e a anunciada é o argumento de
+      // venda do produto: as duas aparecem sempre lado a lado.
       return (
-        <div className="flex items-center justify-end gap-1.5">
-          {row.price_history && row.price_history.length >= 2 ? (
-            <PriceSparkline points={row.price_history} />
-          ) : null}
-          <span className="font-medium">
-            {formatMoney(row.effective_nightly, row.currency, { compact: true })}
+        <div className="flex items-baseline justify-end gap-1.5">
+          <span className={cn("font-medium", row.priceSource === "quote" && "text-success")}>
+            {formatMoney(row.effectiveNightly, row.currency, { compact: true })}
           </span>
           <span className="text-[11px] text-muted-foreground">
-            {formatMoney(row.gross_nightly, row.currency, { compact: true })}
+            {formatMoney(row.grossNightly, row.currency, { compact: true })}
           </span>
         </div>
       );
 
-    case "total_price":
-      return formatMoney(row.total_price, row.currency, { compact: true });
+    case "totalPrice":
+      return formatMoney(row.totalPrice, row.currency, { compact: true });
 
-    case "rating_overall":
-      return row.rating_overall === null ? (
+    case "ratingOverall":
+      return row.ratingOverall === null ? (
         "—"
       ) : (
         <span className="inline-flex items-center gap-0.5">
           <Star className="h-3 w-3 fill-current text-warning" />
-          {formatRating(row.rating_overall)}
+          {formatRating(row.ratingOverall)}
         </span>
       );
 
-    case "review_count":
-      return formatNumber(row.review_count);
+    case "reviewCount":
+      return formatNumber(row.reviewCount);
 
     case "anchors":
-      if (row.anchor_distances?.length) {
+      if (row.anchorDistances.length) {
         return (
           <span className="text-[11px]">
-            {row.anchor_distances
-              .map((d) => `${d.label}: ${formatDistance(d.meters)}`)
+            {row.anchorDistances
+              .map((distance) => `${distance.label}: ${formatDistance(distance.meters)}`)
               .join(" · ")}
           </span>
         );
       }
-      return formatDistance(row.min_anchor_distance_m);
+      return "—";
 
     case "beds":
       return row.beds === null
         ? "—"
-        : `${row.beds}${row.person_capacity ? `/${row.person_capacity}` : ""}`;
+        : `${row.beds}${row.personCapacity ? `/${row.personCapacity}` : ""}`;
 
-    case "cleaning_fee":
-      return formatMoney(row.cleaning_fee, row.currency, { compact: true });
+    case "cleaningFee":
+      return formatMoney(row.cleaningFee, row.currency, { compact: true });
 
-    case "cleaning_ratio":
-      return formatPercent(row.cleaning_ratio);
+    case "cleaningRatio":
+      return formatPercent(row.cleaningRatio);
+
+    case "link":
+      return row.url ? (
+        <a
+          href={row.url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center text-muted-foreground hover:text-foreground"
+          title="Abrir no Airbnb"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      ) : null;
 
     default:
       return "—";

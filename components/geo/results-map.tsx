@@ -12,9 +12,8 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { AnchorRow } from "@/lib/db/queries";
 import { formatDistance, formatMoney, formatRating } from "@/lib/format";
-import type { ResultRow } from "@/components/results/types";
+import type { Anchor, Row } from "@/components/results/types";
 
 /**
  * Mapa dos resultados. Marcadores coloridos por score (ou por diária efetiva
@@ -25,9 +24,9 @@ export function ResultsMap({
   anchors,
   onOpen,
 }: {
-  rows: ResultRow[];
-  anchors: AnchorRow[];
-  onOpen: (row: ResultRow) => void;
+  rows: Row[];
+  anchors: Anchor[];
+  onOpen: (row: Row) => void;
 }) {
   const points = useMemo(
     () => rows.filter((row) => row.lat !== null && row.lng !== null),
@@ -68,27 +67,27 @@ export function ResultsMap({
         >
           <Popup>
             <strong>{anchor.label}</strong>
-            {anchor.max_distance_m ? (
-              <div>raio de {formatDistance(anchor.max_distance_m).replace("~", "")}</div>
+            {anchor.maxDistanceM ? (
+              <div>raio de {formatDistance(anchor.maxDistanceM).replace("~", "")}</div>
             ) : null}
           </Popup>
         </Marker>
       ))}
 
       {anchors
-        .filter((anchor) => anchor.max_distance_m)
+        .filter((anchor) => anchor.maxDistanceM)
         .map((anchor) => (
           <Circle
             key={`raio-${anchor.id}`}
             center={[anchor.lat, anchor.lng]}
-            radius={anchor.max_distance_m!}
+            radius={anchor.maxDistanceM!}
             pathOptions={{ color: "#7c5c3a", weight: 1, fillOpacity: 0.05 }}
           />
         ))}
 
       {points.map((row) => (
         <CircleMarker
-          key={row.id}
+          key={row.externalId}
           center={[row.lat!, row.lng!]}
           radius={6}
           pathOptions={{
@@ -101,13 +100,13 @@ export function ResultsMap({
         >
           <Popup>
             <div className="space-y-0.5 text-xs">
-              <strong>{row.title ?? row.external_id}</strong>
+              <strong>{row.title ?? row.externalId}</strong>
               <div>
-                {formatMoney(row.effective_nightly, row.currency)} /noite real
+                {formatMoney(row.effectiveNightly, row.currency)} /noite real
               </div>
-              {row.rating_overall !== null ? (
+              {row.ratingOverall !== null ? (
                 <div>
-                  {formatRating(row.rating_overall)} · {row.review_count} avaliações
+                  {formatRating(row.ratingOverall)} · {row.reviewCount} avaliações
                 </div>
               ) : null}
               <div className="text-muted-foreground">
@@ -125,11 +124,11 @@ export function ResultsMap({
  * Cor por score quando há score; por diária efetiva quando não há. Em ambos
  * os casos verde = melhor, vermelho = pior, dentro do conjunto atual.
  */
-function buildScale(rows: ResultRow[]): (row: ResultRow) => string {
+function buildScale(rows: Row[]): (row: Row) => string {
   const hasScore = rows.some((row) => row.score !== undefined);
 
   const values = rows
-    .map((row) => (hasScore ? row.score : row.effective_nightly))
+    .map((row) => (hasScore ? row.score : row.effectiveNightly))
     .filter((value): value is number => value !== null && value !== undefined);
 
   if (values.length === 0) return () => "#7c5c3a";
@@ -139,7 +138,7 @@ function buildScale(rows: ResultRow[]): (row: ResultRow) => string {
   const span = max - min || 1;
 
   return (row) => {
-    const raw = hasScore ? row.score : row.effective_nightly;
+    const raw = hasScore ? row.score : row.effectiveNightly;
     if (raw === null || raw === undefined) return "#9ca3af";
     const normalized = (raw - min) / span;
     // Sem score, menor preço é melhor: a escala inverte.
@@ -153,8 +152,8 @@ function FitToContent({
   points,
   anchors,
 }: {
-  points: ResultRow[];
-  anchors: AnchorRow[];
+  points: Row[];
+  anchors: Anchor[];
 }) {
   const map = useMap();
 

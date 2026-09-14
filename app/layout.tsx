@@ -5,13 +5,13 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Garimpo",
   description:
-    "Busca avançada de acomodações com filtros compostos e preço total real.",
+    "Busca de acomodações com filtros compostos e preço total real, sem login e sem histórico.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex h-full flex-col overflow-hidden">{children}</body>
     </html>
   );
 }

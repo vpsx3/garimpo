@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink, Heart, Eye, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,36 @@ export function DetailDrawer({
 }) {
   const [note, setNote] = useState(row?.verdict_note ?? "");
   const [saving, setSaving] = useState(false);
+  const [matches, setMatches] = useState<
+    { comment: string; created_at_source: string | null }[]
+  >([]);
+
+  const listingId = row?.id;
+  const termsKey = highlightTerms.join(",");
+
+  // As avaliações são buscadas ao abrir o drawer, não junto com a tabela:
+  // trazê-las para 300 linhas de uma vez seria desperdício.
+  useEffect(() => {
+    if (!listingId) {
+      setMatches([]);
+      return;
+    }
+    let cancelled = false;
+    const url = `/api/listings/${listingId}/reviews${
+      termsKey ? `?terms=${encodeURIComponent(termsKey)}` : ""
+    }`;
+    fetch(url)
+      .then((response) => (response.ok ? response.json() : { reviews: [] }))
+      .then((payload) => {
+        if (!cancelled) setMatches(payload.reviews ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setMatches([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listingId, termsKey]);
 
   if (!row) return null;
 
@@ -182,10 +212,16 @@ export function DetailDrawer({
             </dl>
           </Section>
 
-          {row.review_matches?.length ? (
-            <Section title="Trechos que casaram com o filtro">
+          {matches.length ? (
+            <Section
+              title={
+                termsKey
+                  ? "Trechos que casaram com o filtro"
+                  : "Avaliações recentes"
+              }
+            >
               <ul className="space-y-2">
-                {row.review_matches.map((match, index) => (
+                {matches.map((match, index) => (
                   <li key={index} className="rounded border bg-muted/40 p-2 text-xs">
                     <Highlighted text={match.comment} terms={highlightTerms} />
                     <div className="mt-1 text-[11px] text-muted-foreground">

@@ -15,6 +15,7 @@ import { FilterPanel } from "./filter-panel";
 import { ResultsTable } from "./table";
 import { ResultCards } from "./cards";
 import { DetailDrawer } from "./detail-drawer";
+import { EnrichButton } from "./enrich-button";
 import type { EmptyDiagnosis, ResultRow, ResultsResponse } from "./types";
 
 export function ResultsWorkspace({
@@ -179,6 +180,12 @@ export function ResultsWorkspace({
           </Tabs>
 
           <div className="flex-1" />
+
+          <EnrichButton
+            searchId={search.id}
+            filter={filter}
+            onDone={() => void loadResults()}
+          />
 
           {selected.size > 0 ? (
             <Button size="sm" variant="outline" asChild>

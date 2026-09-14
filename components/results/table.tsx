@@ -14,6 +14,7 @@ import {
 import type { OrderKey } from "@/lib/filters/build";
 import type { ResultRow } from "./types";
 import { PriceSparkline } from "./sparkline";
+import { ScoreCell } from "@/components/scoring/score-cell";
 
 type Column = {
   key: OrderKey | "score" | "anchors";
@@ -170,7 +171,7 @@ function renderCell(key: Column["key"], row: ResultRow) {
       return row.score === undefined ? (
         "—"
       ) : (
-        <span className="font-medium">{(row.score * 100).toFixed(0)}</span>
+        <ScoreCell score={row.score} breakdown={row.score_breakdown} />
       );
 
     case "effective_nightly":

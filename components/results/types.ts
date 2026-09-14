@@ -1,4 +1,5 @@
 import type { FilterDefinition } from "@/lib/filters/types";
+import type { ScoreComponent } from "@/lib/scoring/engine";
 
 /** Uma linha da tabela de resultados, tal como a consulta a devolve. */
 export type ResultRow = {
@@ -68,8 +69,13 @@ export type ResultRow = {
   verdict_note: string | null;
   // opcionais, preenchidas por etapas posteriores
   score?: number;
-  score_breakdown?: { key: string; label: string; contribution: number; normalized: number }[];
-  anchor_distances?: { anchorId: string; label: string; meters: number }[];
+  score_breakdown?: ScoreComponent[];
+  anchor_distances?: {
+    anchorId: string;
+    label: string;
+    meters: number;
+    maxDistanceM: number | null;
+  }[];
   price_history?: { captured_at: string; effective_nightly: number | null }[];
   review_matches?: { comment: string; created_at_source: string | null }[];
 };

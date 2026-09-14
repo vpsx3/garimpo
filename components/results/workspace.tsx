@@ -8,6 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { postJson } from "@/lib/api";
 import type { FilterDefinition } from "@/lib/filters/types";
+import type { ScoringWeights } from "@/lib/scoring/types";
+import { WeightsEditor } from "@/components/scoring/weights-editor";
 import type { FilterSetRow } from "@/lib/db/queries";
 import type { Search } from "@/lib/db/types";
 import { cn } from "@/lib/utils";
@@ -28,6 +30,7 @@ export function ResultsWorkspace({
   hasAnchors: boolean;
 }) {
   const [filter, setFilter] = useState<FilterDefinition>({});
+  const [weights, setWeights] = useState<ScoringWeights>({});
   const [rows, setRows] = useState<ResultRow[]>([]);
   const [diagnosis, setDiagnosis] = useState<EmptyDiagnosis | null>(null);
   const [count, setCount] = useState<number | null>(null);
@@ -57,7 +60,12 @@ export function ResultsWorkspace({
     try {
       const response = await postJson<ResultsResponse>(
         `/api/searches/${search.id}/results`,
-        { filter, orderBy, orderDir },
+        {
+          filter,
+          orderBy,
+          orderDir,
+          weights: Object.keys(weights).length ? weights : undefined,
+        },
       );
       setRows(response.results);
       setDiagnosis(response.diagnosis);
@@ -67,11 +75,20 @@ export function ResultsWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [search.id, filter, orderBy, orderDir]);
+  }, [search.id, filter, orderBy, orderDir, weights]);
 
   useEffect(() => {
     void loadResults();
   }, [loadResults]);
+
+  // Ligar a pontuação troca a ordenação padrão para score (§9).
+  useEffect(() => {
+    setOrderBy((current) =>
+      Object.keys(weights).length > 0 && current === "effective_nightly"
+        ? "score"
+        : current,
+    );
+  }, [weights]);
 
   // Contador ao vivo com debounce de 300ms: o painel responde a cada tecla
   // sem disparar uma consulta a cada tecla.
@@ -106,6 +123,8 @@ export function ResultsWorkspace({
     });
   }
 
+  const scoring = Object.keys(weights).length > 0;
+
   function sort(key: string) {
     if (orderBy === key) {
       setOrderDir((dir) => (dir === "asc" ? "desc" : "asc"));
@@ -118,14 +137,20 @@ export function ResultsWorkspace({
   async function saveFilterSet(label: string) {
     const { filterSet } = await postJson<{ filterSet: FilterSetRow }>(
       "/api/filter-sets",
-      { label, definition: filter },
+      {
+        label,
+        definition: filter,
+        scoringWeights: Object.keys(weights).length ? weights : null,
+      },
     );
     setSets((current) => [filterSet, ...current]);
   }
 
   function loadFilterSet(id: string) {
     const found = sets.find((set) => set.id === id);
-    if (found) setFilter(found.definition as FilterDefinition);
+    if (!found) return;
+    setFilter(found.definition as FilterDefinition);
+    setWeights((found.scoring_weights as ScoringWeights) ?? {});
   }
 
   return (
@@ -137,6 +162,11 @@ export function ResultsWorkspace({
         )}
       >
         {panelOpen ? (
+          <div className="flex h-full flex-col">
+            <div className="shrink-0 px-3">
+              <WeightsEditor weights={weights} onChange={setWeights} />
+            </div>
+            <div className="min-h-0 flex-1">
           <FilterPanel
             filter={filter}
             onChange={setFilter}
@@ -147,6 +177,8 @@ export function ResultsWorkspace({
             onLoadFilterSet={loadFilterSet}
             hasAnchors={hasAnchors}
           />
+            </div>
+          </div>
         ) : null}
       </aside>
 
@@ -228,7 +260,7 @@ export function ResultsWorkspace({
                 orderBy={orderBy}
                 orderDir={orderDir}
                 onSort={sort}
-                hasScore={rows.some((row) => row.score !== undefined)}
+                hasScore={scoring}
               />
             ) : (
               <ResultCards rows={rows} onOpen={setOpenRow} />
